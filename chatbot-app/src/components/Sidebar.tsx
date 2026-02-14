@@ -11,6 +11,9 @@ interface SidebarProps {
   onSelectConv: (id: string) => void;
   onDeleteConv: (id: string) => void;
   onSettingsChange: (s: AppSettings) => void;
+  mobileMode: boolean;
+  drawerOpen: boolean;
+  onCloseDrawer: () => void;
 }
 
 type Tab = 'chats' | 'settings';
@@ -23,11 +26,90 @@ export default function Sidebar({
   onSelectConv,
   onDeleteConv,
   onSettingsChange,
+  mobileMode,
+  drawerOpen,
+  onCloseDrawer,
 }: SidebarProps) {
   const [expanded, setExpanded] = useState(true);
   const [tab, setTab] = useState<Tab>('chats');
 
-  if (!expanded) {
+  const isOpen = mobileMode ? drawerOpen : expanded;
+
+  if (mobileMode) {
+    return (
+      <>
+        <aside className={`sidebar mobile-drawer${isOpen ? ' open' : ''}`}>
+          <div className="sidebar-header">
+            <div className="sidebar-logo">
+              <div className="sidebar-logo-mark" aria-hidden="true" />
+              <span className="sidebar-logo-text">Nexus AI</span>
+            </div>
+            <div className="sidebar-header-actions">
+              <button className="icon-btn" onClick={onNewChat} title="New chat">
+                <Plus size={16} />
+              </button>
+              <button className="icon-btn" onClick={onCloseDrawer} title="Close">
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+          </div>
+
+          <nav className="sidebar-nav">
+            <button
+              className={`sidebar-tab${tab === 'chats' ? ' active' : ''}`}
+              onClick={() => setTab('chats')}
+            >
+              <MessageSquare size={14} />
+              Chats
+            </button>
+            <button
+              className={`sidebar-tab${tab === 'settings' ? ' active' : ''}`}
+              onClick={() => setTab('settings')}
+            >
+              <Settings size={14} />
+              Settings
+            </button>
+          </nav>
+
+          <div className="sidebar-content">
+            {tab === 'chats' ? (
+              conversations.length === 0 ? (
+                <div className="conv-empty">
+                  <MessageSquare size={28} />
+                  <span>No conversations yet</span>
+                  <span className="conv-empty-hint">Click + to start a new chat</span>
+                </div>
+              ) : (
+                <ul className="conv-list">
+                  {conversations.map((c) => (
+                    <li key={c.id} className={`conv-item${c.id === activeConvId ? ' active' : ''}`}>
+                      <button className="conv-btn" onClick={() => onSelectConv(c.id)}>
+                        <MessageSquare size={14} className="conv-icon" />
+                        <span className="conv-title">{c.title}</span>
+                        <span className="conv-count">{c.messages.length}</span>
+                      </button>
+                      <button
+                        className="conv-delete"
+                        onClick={(e) => { e.stopPropagation(); onDeleteConv(c.id); }}
+                        title="Delete"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <SettingsPanel settings={settings} onChange={onSettingsChange} />
+            )}
+          </div>
+        </aside>
+        {isOpen && <button className="sidebar-backdrop" onClick={onCloseDrawer} aria-label="Close sidebar" />}
+      </>
+    );
+  }
+
+  if (!isOpen) {
     return (
       <aside className="sidebar collapsed">
         <button className="sidebar-expand" onClick={() => setExpanded(true)} title="Expand sidebar">

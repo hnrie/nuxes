@@ -46,6 +46,7 @@
   --font-display: 'Syne', sans-serif;
   --font-body: 'DM Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --app-height: 100dvh;
 }
 
 /* ─── Reset ─────────────────────────────────────────────────────────────── */
@@ -57,6 +58,7 @@
 
 html, body, #root {
   height: 100%;
+  min-height: var(--app-height);
   width: 100%;
   overflow: hidden;
 }
@@ -77,8 +79,10 @@ input, select, textarea { font-family: inherit; }
 .app-layout {
   display: flex;
   height: 100%;
+  min-height: var(--app-height);
   width: 100%;
   position: relative;
+  overflow: hidden;
 }
 
 .app-main {
@@ -97,6 +101,7 @@ input, select, textarea { font-family: inherit; }
   border-right: 1px solid var(--border);
   transition: width 0.2s ease;
   overflow: hidden;
+  z-index: 30;
 }
 
 .sidebar.expanded { width: var(--sidebar-w); }
@@ -428,6 +433,7 @@ input, select, textarea { font-family: inherit; }
 /* ─── Chat Interface ─────────────────────────────────────────────────────── */
 .chat-interface {
   height: 100%;
+  min-height: var(--app-height);
   display: flex;
   flex-direction: column;
   background: var(--bg-base);
@@ -453,7 +459,7 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: max(8px, env(safe-area-inset-top)) 20px 0;
   border-bottom: 1px solid var(--border);
   background: rgba(6, 9, 17, 0.8);
   backdrop-filter: blur(12px);
@@ -462,8 +468,20 @@ input, select, textarea { font-family: inherit; }
   flex-shrink: 0;
 }
 
-.chat-topbar-left { flex: 1; min-width: 0; }
+.chat-topbar-left { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .chat-topbar-right { flex-shrink: 0; }
+
+.topbar-menu-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
 
 .chat-title {
   font-family: var(--font-display);
@@ -536,7 +554,7 @@ input, select, textarea { font-family: inherit; }
 /* Input Area */
 .input-area {
   flex-shrink: 0;
-  padding: 12px 20px 16px;
+  padding: 12px 20px calc(16px + env(safe-area-inset-bottom));
   position: relative;
   z-index: 10;
   background: linear-gradient(0deg, var(--bg-base) 60%, transparent);
@@ -1054,6 +1072,7 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-width: min(280px, calc(100vw - 20px));
 }
 
 .model-option {
@@ -1230,7 +1249,7 @@ input, select, textarea { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 10px;
+  padding: 7px 12px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
@@ -1258,8 +1277,8 @@ input, select, textarea { font-family: inherit; }
 }
 
 .attach-btn {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   border-radius: var(--radius-md);
   color: var(--text-muted);
   display: flex;
@@ -1291,8 +1310,8 @@ input, select, textarea { font-family: inherit; }
 .message-textarea:disabled { opacity: 0.5; }
 
 .send-btn {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1367,7 +1386,131 @@ input, select, textarea { font-family: inherit; }
 
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .sidebar.expanded { width: 220px; }
-  .welcome-prompts { grid-template-columns: 1fr; }
-  .message-body { max-width: 90%; }
+  :root {
+    --topbar-h: 62px;
+  }
+  .chat-topbar {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .messages-list {
+    padding: 18px 12px 14px;
+    width: 100%;
+  }
+  .input-area {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .welcome-screen {
+    min-height: 62vh;
+    padding: 20px 12px;
+    gap: 22px;
+  }
+  .welcome-title {
+    font-size: 24px;
+  }
+  .welcome-subtitle {
+    font-size: 14px;
+  }
+  .welcome-prompts { grid-template-columns: 1fr; gap: 8px; }
+  .prompt-chip {
+    padding: 14px;
+    font-size: 14px;
+  }
+  .message-row {
+    gap: 8px;
+    padding: 9px 0;
+  }
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+  }
+  .message-body { max-width: 100%; }
+  .assistant-content,
+  .user-text {
+    font-size: 13px;
+  }
+  .input-toolbar {
+    padding: 10px 10px 0;
+    gap: 6px;
+  }
+  .toolbar-btn {
+    min-height: 36px;
+  }
+  .input-row {
+    gap: 6px;
+    padding: 8px 8px 10px;
+  }
+  .message-textarea {
+    min-height: 40px;
+    max-height: 34dvh;
+    font-size: 16px;
+  }
+  .model-trigger {
+    min-height: 40px;
+    padding: 6px 10px;
+  }
+  .model-trigger-name {
+    max-width: 110px;
+  }
+  .model-dropdown {
+    width: min(280px, calc(100vw - 16px));
+    right: -2px;
+  }
+  .input-disclaimer {
+    font-size: 10px;
+    margin-top: 6px;
+  }
+}
+
+@media (max-width: 900px) {
+  .mobile-mode .sidebar.mobile-drawer {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: min(88vw, 320px);
+    transform: translateX(-102%);
+    transition: transform 0.22s ease;
+    border-right: 1px solid var(--border-hover);
+    box-shadow: var(--shadow-lg);
+  }
+  .mobile-mode .sidebar.mobile-drawer.open {
+    transform: translateX(0);
+  }
+  .mobile-mode .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 6, 12, 0.64);
+    z-index: 25;
+  }
+  .mobile-mode .app-main {
+    width: 100%;
+  }
+  .mobile-mode .icon-btn,
+  .mobile-mode .sidebar-expand,
+  .mobile-mode .sidebar-new-collapsed,
+  .mobile-mode .conv-delete {
+    width: 40px;
+    height: 40px;
+  }
+  .mobile-mode .conv-btn {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .chat-title {
+    font-size: 14px;
+  }
+  .chat-title-logo span {
+    font-size: 14px;
+  }
+  .model-trigger-name {
+    max-width: 84px;
+  }
+  .model-option {
+    padding: 10px;
+  }
 }
