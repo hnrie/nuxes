@@ -71,6 +71,19 @@ export async function chatCompletionStream(
     number,
     { id: string; type: string; function: { name: string; arguments: string } }
   > = {};
+  let emittedToolCalls = false;
+
+  const emitToolCalls = () => {
+    if (emittedToolCalls || Object.keys(pendingToolCalls).length === 0) return;
+    emittedToolCalls = true;
+    const toolCallArray = Object.values(pendingToolCalls).map((tc) => ({
+      index: 0,
+      id: tc.id,
+      type: tc.type,
+      function: tc.function,
+    }));
+    onToolCalls(toolCallArray);
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -92,6 +105,10 @@ export async function chatCompletionStream(
 
         if (choice.finish_reason) {
           finishReason = choice.finish_reason;
+          if (choice.finish_reason === 'tool_calls') {
+            emitToolCalls();
+            return { finishReason };
+          }
         }
 
         const delta = choice.delta;
@@ -126,15 +143,7 @@ export async function chatCompletionStream(
   }
 
   // If we have completed tool calls, pass them back
-  if (Object.keys(pendingToolCalls).length > 0) {
-    const toolCallArray = Object.values(pendingToolCalls).map((tc) => ({
-      index: 0,
-      id: tc.id,
-      type: tc.type,
-      function: tc.function,
-    }));
-    onToolCalls(toolCallArray);
-  }
+  emitToolCalls();
 
   return { finishReason };
 }
