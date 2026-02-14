@@ -9,8 +9,7 @@ import type {
   ToolCall,
 } from '../types';
 import { chatCompletionStream, chatCompletion } from '../services/api';
-import { webSearch, formatSearchResultsForAI } from '../services/webSearch';
-import { runCode } from '../services/fileUtils';
+import { executeSubagentCall, formatSubagentResponse } from '../agents';
 import { DEFAULT_SYSTEM_PROMPT, MAX_AGENT_ITERATIONS } from '../config/models';
 
 function generateId(): string {
@@ -22,71 +21,6 @@ function generateTitle(content: string): string {
 }
 
 // ─── Tool Execution ──────────────────────────────────────────────────────────
-
-interface ToolCallResolved {
-  id: string;
-  name: string;
-  args: string;
-}
-
-async function executeTool(
-  call: ToolCallResolved,
-  attachedFiles: AttachedFile[],
-): Promise<string> {
-  if (call.name === 'web_search') {
-    let query = '';
-    try {
-      const parsed: { query?: string } = JSON.parse(call.args);
-      query = parsed.query ?? call.args;
-    } catch {
-      query = call.args;
-    }
-    const results = await webSearch(query);
-    return formatSearchResultsForAI(results);
-  }
-
-  if (call.name === 'run_code') {
-    let code = '';
-    try {
-      const parsed: { code?: string } = JSON.parse(call.args);
-      code = parsed.code ?? '';
-    } catch {
-      code = call.args;
-    }
-    return runCode(code);
-  }
-
-  if (call.name === 'analyze_file') {
-    let filename = '';
-    let instruction = '';
-    try {
-      const parsed: { filename?: string; instruction?: string } = JSON.parse(call.args);
-      filename = parsed.filename ?? '';
-      instruction = parsed.instruction ?? '';
-    } catch {
-      filename = call.args;
-    }
-
-    const file = attachedFiles.find((f) => f.name === filename || f.name.includes(filename));
-    if (!file) {
-      return `File "${filename}" not found in attached files. Available: ${
-        attachedFiles.map((f) => f.name).join(', ') || 'none'
-      }`;
-    }
-
-    if (file.isImage) {
-      return `File "${file.name}" is an image (${file.type}). ${instruction}. The image has been provided to you in the conversation context.`;
-    }
-
-    const preview = file.content.length > 3000
-      ? file.content.substring(0, 3000) + '\n... [truncated]'
-      : file.content;
-
-    return `File: ${file.name} (${file.type})\nInstruction: ${instruction}\n\nContent:\n${preview}`;
-  }
-
-  return `Unknown tool: ${call.name}`;
-}
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
@@ -337,14 +271,19 @@ export function useChat(settings: AppSettings) {
               isStreaming: true,
             });
 
-            const result = await executeTool(
-              { id: tc.id, name: tc.function.name, args: tc.function.arguments },
-              attachments,
-            );
+            const execution = await executeSubagentCall(tc, { attachedFiles: attachments });
+            const result = formatSubagentResponse(execution);
 
             step.output = result;
-            step.status = 'done';
-            step.completedAt = new Date();
+            step.status = execution.ok ? 'done' : 'error';
+            step.completedAt = new Date(execution.metadata.endTime);
+            step.retries = execution.metadata.retries;
+            step.failures = execution.metadata.failures;
+            updateMessage(updatedConv.id, assistantMsgId, {
+              content: streamContent,
+              agentSteps: [...agentSteps],
+              isStreaming: true,
+            });
 
             toolResultMessages.push({
               role: 'tool',
