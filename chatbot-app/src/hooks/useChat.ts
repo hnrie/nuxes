@@ -150,6 +150,49 @@ export function parseFallbackToolCalls(content: string): FallbackToolParseResult
   const interpretedNames: string[] = [];
   const blocksToStrip: Array<{ start: number; end: number }> = [];
 
+  const appendParsedToolCall = (name: string, argumentsObject: Record<string, unknown>) => {
+    toolCalls.push({
+      id: generateId(),
+      type: 'function',
+      function: {
+        name,
+        arguments: JSON.stringify(argumentsObject),
+      },
+    });
+    interpretedNames.push(name);
+  };
+
+  const parseJsonToolPayload = (jsonPayload: string) => {
+    try {
+      const parsed = JSON.parse(jsonPayload) as
+        | {
+            name?: unknown;
+            arguments?: unknown;
+            tool?: { name?: unknown; arguments?: unknown };
+          }
+        | null;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+
+      const rawName = typeof parsed.name === 'string'
+        ? parsed.name
+        : typeof parsed.tool?.name === 'string'
+          ? parsed.tool.name
+          : null;
+      if (!rawName) return;
+
+      const normalizedName = normalizeToolName(rawName);
+      if (!normalizedName) return;
+
+      const rawArguments = parsed.arguments ?? parsed.tool?.arguments;
+      if (!rawArguments || typeof rawArguments !== 'object' || Array.isArray(rawArguments)) return;
+
+      appendParsedToolCall(normalizedName, rawArguments as Record<string, unknown>);
+      return true;
+    } catch {
+      return;
+    }
+  };
+
   const xmlPattern = /<(web_search|analyze_file|run_code)>([\s\S]*?)<\/\1>/gi;
   let xmlMatch = xmlPattern.exec(content);
   while (xmlMatch) {
@@ -206,6 +249,28 @@ export function parseFallbackToolCalls(content: string): FallbackToolParseResult
       });
     }
     toolMatch = toolPattern.exec(content);
+  }
+
+  const fencedJsonPattern = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let fencedJsonMatch = fencedJsonPattern.exec(content);
+  while (fencedJsonMatch) {
+    const jsonPayload = (fencedJsonMatch[1] ?? '').trim();
+    if (jsonPayload.length > 0 && parseJsonToolPayload(jsonPayload)) {
+      blocksToStrip.push({
+        start: fencedJsonMatch.index,
+        end: fencedJsonMatch.index + fencedJsonMatch[0].length,
+      });
+    }
+    fencedJsonMatch = fencedJsonPattern.exec(content);
+  }
+
+  const trimmedContent = content.trim();
+  if (trimmedContent.length > 0 && parseJsonToolPayload(trimmedContent)) {
+    const start = content.indexOf(trimmedContent);
+    blocksToStrip.push({
+      start,
+      end: start + trimmedContent.length,
+    });
   }
 
   blocksToStrip.sort((a, b) => a.start - b.start);

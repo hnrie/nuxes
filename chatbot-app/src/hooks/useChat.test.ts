@@ -20,9 +20,24 @@ describe('tool intent detection', () => {
     expect(parsed.toolCalls[0].function.arguments).toBe('{"query":"weather"}');
   });
 
-  it('rejects non-tool markdown wrapper as tool call', () => {
+  it('parses fenced JSON tool call', () => {
     const parsed = parseFallbackToolCalls('```json\n{"name":"web_search","arguments":{"query":"weather"}}\n```');
+    expect(parsed.toolCalls).toHaveLength(1);
+    expect(parsed.toolCalls[0].function.name).toBe('web_search');
+    expect(parsed.toolCalls[0].function.arguments).toBe('{"query":"weather"}');
+    expect(parsed.needsClarification).toBe(false);
+  });
+
+  it('rejects non-object arguments', () => {
+    const parsed = parseFallbackToolCalls('{"name":"web_search","arguments":"weather"}');
     expect(parsed.toolCalls).toHaveLength(0);
+    expect(parsed.displayContent).toBe('{"name":"web_search","arguments":"weather"}');
+  });
+
+  it('preserves normal assistant text when no valid tool call is found', () => {
+    const parsed = parseFallbackToolCalls('Here is the final answer with no tool call.');
+    expect(parsed.toolCalls).toHaveLength(0);
+    expect(parsed.displayContent).toBe('Here is the final answer with no tool call.');
     expect(parsed.needsClarification).toBe(false);
   });
 
