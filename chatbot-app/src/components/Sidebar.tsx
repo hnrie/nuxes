@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MessageSquare, Settings, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Conversation, AppSettings } from '../types';
 import { MODELS, DEFAULT_SYSTEM_PROMPT } from '../config/models';
+import RenderedTitle from './RenderedTitle';
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -85,7 +86,7 @@ export default function Sidebar({
                     <li key={c.id} className={`conv-item${c.id === activeConvId ? ' active' : ''}`}>
                       <button className="conv-btn" onClick={() => onSelectConv(c.id)}>
                         <MessageSquare size={14} className="conv-icon" />
-                        <span className="conv-title">{c.title}</span>
+                        <RenderedTitle title={c.title} className="conv-title" />
                         <span className="conv-count">{c.messages.length}</span>
                       </button>
                       <button
@@ -170,7 +171,7 @@ export default function Sidebar({
                 <li key={c.id} className={`conv-item${c.id === activeConvId ? ' active' : ''}`}>
                   <button className="conv-btn" onClick={() => onSelectConv(c.id)}>
                     <MessageSquare size={14} className="conv-icon" />
-                    <span className="conv-title">{c.title}</span>
+                    <RenderedTitle title={c.title} className="conv-title" />
                     <span className="conv-count">{c.messages.length}</span>
                   </button>
                   <button
