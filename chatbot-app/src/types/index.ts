@@ -66,6 +66,8 @@ export interface AgentStep {
   status: AgentStepStatus;
   startedAt: Date;
   completedAt?: Date;
+  retries?: number;
+  failures?: Array<{ attempt: number; error: string; at: string }>;
 }
 
 // ─── Web Search Types ─────────────────────────────────────────────────────────

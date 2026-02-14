@@ -126,7 +126,7 @@ function WelcomeScreen({ onPrompt }: WelcomeScreenProps) {
         </div>
         <h2 className="welcome-title">Welcome to Nexus AI</h2>
         <p className="welcome-subtitle">
-          Powered by Claude. Search the web, analyze files, run code, and orchestrate tasks.
+          Powered by Claude with specialized subagents for web search, file analysis, and code execution.
         </p>
       </div>
 
@@ -146,7 +146,8 @@ function WelcomeScreen({ onPrompt }: WelcomeScreenProps) {
       <div className="welcome-features">
         <div className="feature-pill">🔍 Web Search</div>
         <div className="feature-pill">📎 File Attachments</div>
-        <div className="feature-pill">🤖 Subagents</div>
+        <div className="feature-pill">🤖 Subagent Registry</div>
+        <div className="feature-pill">📄 File Analysis</div>
         <div className="feature-pill">💻 Code Execution</div>
       </div>
     </div>

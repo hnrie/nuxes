@@ -1,4 +1,5 @@
 import { BASE_URL, API_KEY } from '../config/models';
+import { getAgentTools } from '../agents';
 import type {
   ChatMessage,
   ChatCompletionChunk,
@@ -7,67 +8,7 @@ import type {
 
 // ─── Tool Definitions for Agents ────────────────────────────────────────────
 
-export const AGENT_TOOLS = [
-  {
-    type: 'function' as const,
-    function: {
-      name: 'web_search',
-      description: 'Search the web for current information, news, facts, or any topic. Use this when you need up-to-date information that may not be in your training data.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'The search query to look up. Be specific and concise.',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'analyze_file',
-      description: 'Analyze a file that the user has attached. Returns the file content or analysis.',
-      parameters: {
-        type: 'object',
-        properties: {
-          filename: {
-            type: 'string',
-            description: 'The name of the file to analyze',
-          },
-          instruction: {
-            type: 'string',
-            description: 'What specific analysis to perform on the file',
-          },
-        },
-        required: ['filename', 'instruction'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'run_code',
-      description: 'Execute JavaScript code in a sandboxed environment and return the result.',
-      parameters: {
-        type: 'object',
-        properties: {
-          code: {
-            type: 'string',
-            description: 'The JavaScript code to execute',
-          },
-          description: {
-            type: 'string',
-            description: 'A brief description of what this code does',
-          },
-        },
-        required: ['code', 'description'],
-      },
-    },
-  },
-] as const;
+export const AGENT_TOOLS = getAgentTools();
 
 // ─── API Request ─────────────────────────────────────────────────────────────
 
