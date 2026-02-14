@@ -247,6 +247,12 @@ export function useChat(settings: AppSettings) {
         };
 
         const apiMessages = buildApiMessages(historyConv, attachments);
+        const enabledToolNames = [
+          ...(settings.webSearchEnabled ? ['web_search'] : []),
+          ...(settings.fileAnalysisEnabled ? ['analyze_file'] : []),
+          ...(settings.codeExecutionEnabled ? ['run_code'] : []),
+        ];
+        const useTools = enabledToolNames.length > 0;
 
         let streamContent = '';
         const agentSteps: AgentStep[] = [];
@@ -266,7 +272,8 @@ export function useChat(settings: AppSettings) {
                 messages: currentMessages,
                 temperature: settings.temperature,
                 stream: true,
-                useTools: settings.webSearchEnabled,
+                useTools,
+                enabledToolNames,
               },
               (chunk) => {
                 streamContent += chunk;
@@ -296,7 +303,8 @@ export function useChat(settings: AppSettings) {
               model: settings.selectedModel,
               messages: currentMessages,
               temperature: settings.temperature,
-              useTools: settings.webSearchEnabled,
+              useTools,
+              enabledToolNames,
             });
 
             const choice = res.choices[0];

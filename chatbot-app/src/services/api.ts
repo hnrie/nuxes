@@ -77,6 +77,15 @@ interface RequestOptions {
   temperature?: number;
   stream?: boolean;
   useTools?: boolean;
+  enabledToolNames?: string[];
+}
+
+
+function getEnabledTools(options: RequestOptions) {
+  if (!options.useTools) return [];
+  if (!options.enabledToolNames || options.enabledToolNames.length === 0) return AGENT_TOOLS;
+  const enabled = new Set(options.enabledToolNames);
+  return AGENT_TOOLS.filter((tool) => enabled.has(tool.function.name));
 }
 
 export async function chatCompletionStream(
@@ -85,12 +94,13 @@ export async function chatCompletionStream(
   onToolCalls: (toolCalls: ChatCompletionChunk['choices'][0]['delta']['tool_calls']) => void,
   signal?: AbortSignal,
 ): Promise<{ finishReason: string | null }> {
+  const tools = getEnabledTools(options);
   const body = {
     model: options.model,
     messages: options.messages,
     temperature: options.temperature ?? 0.7,
     stream: true,
-    ...(options.useTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' } : {}),
+    ...(tools.length > 0 ? { tools, tool_choice: 'auto' } : {}),
   };
 
   const response = await fetch(`${BASE_URL}/chat/completions`, {
@@ -190,12 +200,13 @@ export async function chatCompletionStream(
 
 // Non-streaming version (used for tool result follow-ups)
 export async function chatCompletion(options: RequestOptions): Promise<ChatCompletionResponse> {
+  const tools = getEnabledTools(options);
   const body = {
     model: options.model,
     messages: options.messages,
     temperature: options.temperature ?? 0.7,
     stream: false,
-    ...(options.useTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' } : {}),
+    ...(tools.length > 0 ? { tools, tool_choice: 'auto' } : {}),
   };
 
   const response = await fetch(`${BASE_URL}/chat/completions`, {

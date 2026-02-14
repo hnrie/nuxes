@@ -153,6 +153,30 @@ function SettingsPanel({ settings, onChange }: { settings: AppSettings; onChange
         </div>
       </div>
 
+
+      <div className="settings-group">
+        <div className="settings-toggle-row">
+          <span className="settings-label">File Analysis</span>
+          <button
+            className={`toggle-switch${settings.fileAnalysisEnabled ? ' on' : ''}`}
+            onClick={() => set('fileAnalysisEnabled', !settings.fileAnalysisEnabled)}
+          >
+            <span className="toggle-thumb" />
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-toggle-row">
+          <span className="settings-label">Code Execution</span>
+          <button
+            className={`toggle-switch${settings.codeExecutionEnabled ? ' on' : ''}`}
+            onClick={() => set('codeExecutionEnabled', !settings.codeExecutionEnabled)}
+          >
+            <span className="toggle-thumb" />
+          </button>
+        </div>
+      </div>
       <div className="settings-group">
         <div className="settings-toggle-row">
           <span className="settings-label">Streaming</span>
