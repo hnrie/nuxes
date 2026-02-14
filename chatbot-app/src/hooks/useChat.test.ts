@@ -14,6 +14,18 @@ describe('tool intent detection', () => {
     expect(parsed.needsClarification).toBe(false);
   });
 
+  it('accepts strict tool block json arguments', () => {
+    const parsed = parseFallbackToolCalls('<tool name="web_search">{"query":"weather"}</tool>');
+    expect(parsed.toolCalls).toHaveLength(1);
+    expect(parsed.toolCalls[0].function.arguments).toBe('{"query":"weather"}');
+  });
+
+  it('rejects non-tool markdown wrapper as tool call', () => {
+    const parsed = parseFallbackToolCalls('```json\n{"name":"web_search","arguments":{"query":"weather"}}\n```');
+    expect(parsed.toolCalls).toHaveLength(0);
+    expect(parsed.needsClarification).toBe(false);
+  });
+
   it('asks for clarification when fallback intent is ambiguous', () => {
     const parsed = parseFallbackToolCalls('Let me search that for you.');
     expect(parsed.toolCalls).toHaveLength(0);
@@ -32,5 +44,17 @@ describe('tool intent detection', () => {
     ];
     expect(shouldAttemptArgumentRepair(messages, 0, 2)).toBe(true);
     expect(shouldAttemptArgumentRepair(messages, 2, 2)).toBe(false);
+  });
+
+  it('does not trigger argument repair for unsupported model errors', () => {
+    const messages = [
+      {
+        role: 'tool' as const,
+        tool_call_id: '1',
+        name: 'web_search',
+        content: JSON.stringify({ errorCode: 'unsupported_model' }),
+      },
+    ];
+    expect(shouldAttemptArgumentRepair(messages, 0, 2)).toBe(false);
   });
 });

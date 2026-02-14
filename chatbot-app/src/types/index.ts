@@ -149,6 +149,17 @@ export interface ModelConfig {
 
 // ─── Conversation ─────────────────────────────────────────────────────────────
 
+
+export type SubagentModelSelection =
+  | { mode: 'explicit'; modelId: string }
+  | { mode: 'inherit' };
+
+export type ResolvedSubagentModelMetadata = {
+  requested: SubagentModelSelection;
+  resolvedModelId: string;
+  resolution: 'explicit' | 'inherit';
+};
+
 export interface Conversation {
   id: string;
   title: string;

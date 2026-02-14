@@ -1,4 +1,4 @@
-import type { AttachedFile } from '../types';
+import type { ResolvedSubagentModelMetadata, SubagentModelSelection, AttachedFile } from '../types';
 
 export type SchemaProperty = {
   type: 'string';
@@ -13,6 +13,9 @@ export type InputSchema = {
 
 export type SubagentContext = {
   attachedFiles: AttachedFile[];
+  mainAgentModel: string;
+  requestedSubagentModel?: SubagentModelSelection;
+  resolvedSubagentModel?: ResolvedSubagentModelMetadata;
 };
 
 export type SubagentExecuteResult = {
@@ -44,7 +47,7 @@ export type SubagentSuccess = {
 export type SubagentError = {
   ok: false;
   toolName: string;
-  errorCode: 'unknown_tool' | 'invalid_arguments' | 'execution_failed';
+  errorCode: 'unknown_tool' | 'invalid_arguments' | 'execution_failed' | 'unsupported_model';
   message: string;
   metadata: ExecutionMetadata;
   details?: unknown;

@@ -561,7 +561,7 @@ export function useChat(settings: AppSettings) {
                   agentSteps.push(step);
                   updateStreamingMessage();
 
-                  const execution = await executeSubagentCall(tc, { attachedFiles: attachments });
+                  const execution = await executeSubagentCall(tc, { attachedFiles: attachments, mainAgentModel: settings.selectedModel });
                   const result = formatSubagentResponse(execution);
 
                   step.output = result;
@@ -650,7 +650,7 @@ export function useChat(settings: AppSettings) {
               currentMessages.push({ role: 'assistant', content: streamContent });
               currentMessages.push({
                 role: 'user',
-                content: 'respond only with a valid tool call json/function call',
+                content: 'respond only with a valid function tool call. output must be strict json with a top-level object and no markdown or extra text',
               });
               streamContent = '';
               continue;
@@ -670,7 +670,7 @@ export function useChat(settings: AppSettings) {
             argumentRepairAttempts += 1;
             currentMessages.push({
               role: 'user',
-              content: 'your tool call arguments were invalid. respond only with a corrected tool call json/function call',
+              content: 'your tool call arguments were invalid. respond only with a corrected function tool call. output must be strict json with a top-level object and no markdown or extra text',
             });
             streamContent = '';
             continue;

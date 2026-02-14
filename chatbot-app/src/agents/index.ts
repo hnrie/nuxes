@@ -1,4 +1,5 @@
-import type { ToolCall } from '../types';
+import { getModelConfig, getSupportedModelIds, isSupportedModelId } from '../config/models';
+import type { ToolCall, ResolvedSubagentModelMetadata, SubagentModelSelection } from '../types';
 import { analyzeFileSubagent } from './analyzeFileSubagent';
 import { runCodeSubagent } from './runCodeSubagent';
 import type {
@@ -103,6 +104,80 @@ function formatResponse(response: SubagentResponse): string {
   return JSON.stringify(response, null, 2);
 }
 
+type ResolvedModelResult =
+  | { ok: true; value: ResolvedSubagentModelMetadata }
+  | { ok: false; message: string; details: unknown };
+
+function parseRequestedModelSelection(raw: unknown): SubagentModelSelection | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string') {
+    return { mode: 'explicit', modelId: String(raw) };
+  }
+  if (raw === 'inherit') {
+    return { mode: 'inherit' };
+  }
+  return { mode: 'explicit', modelId: raw };
+}
+
+export function resolveSubagentModel(mainAgentModel: string, requestedModel: unknown): ResolvedModelResult {
+  if (!isSupportedModelId(mainAgentModel)) {
+    return {
+      ok: false,
+      message: `Unsupported main agent model: ${mainAgentModel}`,
+      details: {
+        requestedMainModel: mainAgentModel,
+        supportedModels: getSupportedModelIds(),
+      },
+    };
+  }
+
+  const parsedSelection = parseRequestedModelSelection(requestedModel);
+  const requested = parsedSelection ?? { mode: 'inherit' as const };
+
+  if (requested.mode === 'inherit') {
+    return {
+      ok: true,
+      value: {
+        requested,
+        resolvedModelId: mainAgentModel,
+        resolution: 'inherit',
+      },
+    };
+  }
+
+  if (!isSupportedModelId(requested.modelId)) {
+    return {
+      ok: false,
+      message: `Unsupported model id: ${requested.modelId}`,
+      details: {
+        requestedModel: requested.modelId,
+        supportedModels: getSupportedModelIds(),
+      },
+    };
+  }
+
+  const explicitModel = getModelConfig(requested.modelId);
+  if (!explicitModel) {
+    return {
+      ok: false,
+      message: `Unsupported model id: ${requested.modelId}`,
+      details: {
+        requestedModel: requested.modelId,
+        supportedModels: getSupportedModelIds(),
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      requested,
+      resolvedModelId: explicitModel.id,
+      resolution: 'explicit',
+    },
+  };
+}
+
 export async function executeSubagentCall(call: ToolCall, context: SubagentContext): Promise<SubagentResponse> {
   const startTime = new Date();
   const subagent = subagentRegistry.find((item) => item.name === call.function.name);
@@ -129,7 +204,23 @@ export async function executeSubagentCall(call: ToolCall, context: SubagentConte
     };
   }
 
-  const validated = validateAgainstSchema(subagent, parsed.value);
+  const requestedSubagentModel = parsed.value.model;
+  const modelResolution = resolveSubagentModel(context.mainAgentModel, requestedSubagentModel);
+  if (!modelResolution.ok) {
+    return {
+      ok: false,
+      toolName: subagent.name,
+      errorCode: 'unsupported_model',
+      message: modelResolution.message,
+      details: modelResolution.details,
+      metadata: buildMetadata(startTime, 'failed', 0, []),
+    };
+  }
+
+  const schemaArguments = { ...parsed.value };
+  delete schemaArguments.model;
+
+  const validated = validateAgainstSchema(subagent, schemaArguments);
   if (!validated.ok) {
     return {
       ok: false,
@@ -146,7 +237,11 @@ export async function executeSubagentCall(call: ToolCall, context: SubagentConte
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await subagent.execute(validated.value, context);
+      const result = await subagent.execute(validated.value, {
+        ...context,
+        requestedSubagentModel: modelResolution.value.requested,
+        resolvedSubagentModel: modelResolution.value,
+      });
       return {
         ok: true,
         toolName: subagent.name,
