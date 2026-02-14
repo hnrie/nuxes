@@ -20,6 +20,108 @@ function generateTitle(content: string): string {
   return content.length > 50 ? content.substring(0, 50) + '…' : content;
 }
 
+type FallbackToolParseResult = {
+  toolCalls: ToolCall[];
+  displayContent: string;
+};
+
+function normalizeToolName(rawName: string): string | null {
+  const normalized = rawName.trim().toLowerCase();
+  if (normalized === 'web_search') return 'web_search';
+  if (normalized === 'analyze_file') return 'analyze_file';
+  if (normalized === 'run_code') return 'run_code';
+  return null;
+}
+
+function parseFallbackToolCalls(content: string): FallbackToolParseResult {
+  const toolCalls: ToolCall[] = [];
+  const interpretedNames: string[] = [];
+  const blocksToStrip: Array<{ start: number; end: number }> = [];
+
+  const xmlPattern = /<(web_search|analyze_file|run_code)>([\s\S]*?)<\/\1>/gi;
+  let xmlMatch = xmlPattern.exec(content);
+  while (xmlMatch) {
+    const mappedName = normalizeToolName(xmlMatch[1] ?? '');
+    if (mappedName) {
+      const innerContent = xmlMatch[2] ?? '';
+      const args: Record<string, string> = {};
+      const fieldPattern = /<([a-zA-Z_][\w-]*)>([\s\S]*?)<\/\1>/g;
+      let fieldMatch = fieldPattern.exec(innerContent);
+      while (fieldMatch) {
+        const key = (fieldMatch[1] ?? '').trim();
+        const value = (fieldMatch[2] ?? '').trim();
+        if (key.length > 0) {
+          args[key] = value;
+        }
+        fieldMatch = fieldPattern.exec(innerContent);
+      }
+
+      toolCalls.push({
+        id: generateId(),
+        type: 'function',
+        function: {
+          name: mappedName,
+          arguments: JSON.stringify(args),
+        },
+      });
+      interpretedNames.push(mappedName);
+      blocksToStrip.push({
+        start: xmlMatch.index,
+        end: xmlMatch.index + xmlMatch[0].length,
+      });
+    }
+    xmlMatch = xmlPattern.exec(content);
+  }
+
+  const toolPattern = /<tool\s+name="([^"]+)"\s*>([\s\S]*?)<\/tool>/gi;
+  let toolMatch = toolPattern.exec(content);
+  while (toolMatch) {
+    const mappedName = normalizeToolName(toolMatch[1] ?? '');
+    if (mappedName) {
+      const rawArguments = (toolMatch[2] ?? '').trim();
+      toolCalls.push({
+        id: generateId(),
+        type: 'function',
+        function: {
+          name: mappedName,
+          arguments: rawArguments.length > 0 ? rawArguments : '{}',
+        },
+      });
+      interpretedNames.push(mappedName);
+      blocksToStrip.push({
+        start: toolMatch.index,
+        end: toolMatch.index + toolMatch[0].length,
+      });
+    }
+    toolMatch = toolPattern.exec(content);
+  }
+
+  blocksToStrip.sort((a, b) => a.start - b.start);
+
+  let displayContent = '';
+  let cursor = 0;
+  for (const block of blocksToStrip) {
+    if (block.start < cursor) continue;
+    displayContent += content.slice(cursor, block.start);
+    cursor = block.end;
+  }
+  displayContent += content.slice(cursor);
+
+  const cleanText = displayContent.replace(/\n{3,}/g, '\n\n').trim();
+  const uniqueNames = Array.from(new Set(interpretedNames));
+  if (uniqueNames.length > 0) {
+    const interpretedText = `Interpreted tool request: ${uniqueNames.join(', ')}`;
+    displayContent = cleanText.length > 0 ? `${cleanText}\n\n${interpretedText}` : interpretedText;
+  } else {
+    displayContent = content;
+  }
+
+  return {
+    toolCalls,
+    displayContent,
+  };
+}
+
 // ─── Tool Execution ──────────────────────────────────────────────────────────
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -247,6 +349,19 @@ export function useChat(settings: AppSettings) {
             }
             if (choice?.message?.tool_calls) {
               pendingToolCalls = choice.message.tool_calls;
+            }
+          }
+
+          if ((!pendingToolCalls || pendingToolCalls.length === 0) && streamContent) {
+            const fallback = parseFallbackToolCalls(streamContent);
+            if (fallback.toolCalls.length > 0) {
+              pendingToolCalls = fallback.toolCalls;
+              streamContent = fallback.displayContent;
+              updateMessage(updatedConv.id, assistantMsgId, {
+                content: streamContent,
+                agentSteps: [...agentSteps],
+                isStreaming: true,
+              });
             }
           }
 
