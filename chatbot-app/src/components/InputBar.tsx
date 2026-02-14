@@ -91,10 +91,10 @@ export default function InputBar({
         <button
           className={`toolbar-btn${webSearchEnabled ? ' active' : ''}`}
           onClick={onToggleWebSearch}
-          title="Toggle web search"
+          title="Toggle web search tool"
         >
           <Globe size={13} />
-          Web Search
+          Web Search Tool
         </button>
       </div>
 

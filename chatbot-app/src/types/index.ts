@@ -165,5 +165,7 @@ export interface AppSettings {
   systemPrompt: string;
   temperature: number;
   webSearchEnabled: boolean;
+  fileAnalysisEnabled: boolean;
+  codeExecutionEnabled: boolean;
   streamingEnabled: boolean;
 }

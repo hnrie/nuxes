@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   temperature: 0.7,
   webSearchEnabled: true,
+  fileAnalysisEnabled: true,
+  codeExecutionEnabled: true,
   streamingEnabled: true,
 };
 
