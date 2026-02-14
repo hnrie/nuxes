@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type {
   UIMessage,
   ChatMessage,
@@ -18,6 +18,103 @@ function generateId(): string {
 
 function generateTitle(content: string): string {
   return content.length > 50 ? content.substring(0, 50) + '…' : content;
+}
+
+const chatStateStorageKey = 'nuxes chat state v1';
+
+type PersistedAgentStep = Omit<AgentStep, 'startedAt' | 'completedAt'> & {
+  startedAt: string;
+  completedAt?: string;
+};
+
+type PersistedUIMessage = Omit<UIMessage, 'timestamp' | 'agentSteps'> & {
+  timestamp: string;
+  agentSteps?: PersistedAgentStep[];
+};
+
+type PersistedConversation = Omit<Conversation, 'createdAt' | 'updatedAt' | 'messages'> & {
+  createdAt: string;
+  updatedAt: string;
+  messages: PersistedUIMessage[];
+};
+
+type PersistedChatState = {
+  conversations: PersistedConversation[];
+  activeConvId: string | null;
+};
+
+type HydratedChatState = {
+  conversations: Conversation[];
+  activeConvId: string | null;
+};
+
+function serializeConversation(conversation: Conversation): PersistedConversation {
+  return {
+    ...conversation,
+    createdAt: conversation.createdAt.toISOString(),
+    updatedAt: conversation.updatedAt.toISOString(),
+    messages: conversation.messages.map((message) => ({
+      ...message,
+      timestamp: message.timestamp.toISOString(),
+      agentSteps: message.agentSteps?.map((step) => ({
+        ...step,
+        startedAt: step.startedAt.toISOString(),
+        completedAt: step.completedAt?.toISOString(),
+      })),
+    })),
+  };
+}
+
+function deserializeConversation(conversation: PersistedConversation): Conversation {
+  return {
+    ...conversation,
+    createdAt: new Date(conversation.createdAt),
+    updatedAt: new Date(conversation.updatedAt),
+    messages: conversation.messages.map((message) => ({
+      ...message,
+      timestamp: new Date(message.timestamp),
+      agentSteps: message.agentSteps?.map((step) => ({
+        ...step,
+        startedAt: new Date(step.startedAt),
+        completedAt: step.completedAt ? new Date(step.completedAt) : undefined,
+      })),
+    })),
+  };
+}
+
+function loadChatState(): HydratedChatState {
+  if (typeof window === 'undefined') {
+    return { conversations: [], activeConvId: null };
+  }
+
+  const raw = window.localStorage.getItem(chatStateStorageKey);
+  if (!raw) {
+    return { conversations: [], activeConvId: null };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedChatState>;
+    const persistedConversations = Array.isArray(parsed.conversations) ? parsed.conversations : [];
+    const conversations = persistedConversations.map((conversation) =>
+      deserializeConversation(conversation),
+    );
+    const activeConvId =
+      typeof parsed.activeConvId === 'string' || parsed.activeConvId === null
+        ? parsed.activeConvId
+        : null;
+    return { conversations, activeConvId };
+  } catch {
+    return { conversations: [], activeConvId: null };
+  }
+}
+
+function saveChatState(state: HydratedChatState) {
+  if (typeof window === 'undefined') return;
+  const payload: PersistedChatState = {
+    conversations: state.conversations.map((conversation) => serializeConversation(conversation)),
+    activeConvId: state.activeConvId,
+  };
+  window.localStorage.setItem(chatStateStorageKey, JSON.stringify(payload));
 }
 
 type FallbackToolParseResult = {
@@ -127,12 +224,43 @@ function parseFallbackToolCalls(content: string): FallbackToolParseResult {
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useChat(settings: AppSettings) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const hydratedStateRef = useRef<HydratedChatState>(loadChatState());
+  const [conversations, setConversations] = useState<Conversation[]>(
+    hydratedStateRef.current.conversations,
+  );
+  const [activeConvId, setActiveConvId] = useState<string | null>(hydratedStateRef.current.activeConvId);
   const [isLoading, setIsLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const activeConversation = conversations.find((c) => c.id === activeConvId) ?? null;
+
+  useEffect(() => {
+    saveChatState({ conversations, activeConvId });
+  }, [conversations, activeConvId]);
+
+  const generateConversationTitle = useCallback(
+    async (firstMessage: string) => {
+      const fallbackTitle = generateTitle(firstMessage);
+      try {
+        const response = await chatCompletion({
+          model: 'claude-haiku-4-5-20251001',
+          messages: [
+            {
+              role: 'system',
+              content: 'Create a very short chat title from the user message. Return title only, max 6 words.',
+            },
+            { role: 'user', content: firstMessage },
+          ],
+          temperature: 0.2,
+        });
+        const title = response.choices[0]?.message?.content?.trim() ?? '';
+        return title.length > 0 ? title : fallbackTitle;
+      } catch {
+        return fallbackTitle;
+      }
+    },
+    [],
+  );
 
   // ─── Mutation helpers ──────────────────────────────────────────────────────
 
@@ -244,6 +372,10 @@ export function useChat(settings: AppSettings) {
         };
       }
 
+      const fallbackTitle = generateTitle(userText);
+      const firstUserMessageOnly = conv.messages.filter((message) => message.role === 'user').length === 0;
+      const shouldGenerateTitle = firstUserMessageOnly && (!conv.title || conv.title === fallbackTitle);
+
       // Add user message
       const userMsg: UIMessage = {
         id: userMsgId,
@@ -270,6 +402,25 @@ export function useChat(settings: AppSettings) {
       };
 
       upsertConversation(updatedConv);
+
+      if (shouldGenerateTitle) {
+        void generateConversationTitle(userText).then((nextTitle) => {
+          setConversations((prev) =>
+            prev.map((conversation) => {
+              if (conversation.id !== updatedConv.id) return conversation;
+              const currentTitle = conversation.title;
+              if (currentTitle && currentTitle !== fallbackTitle) return conversation;
+              if (!nextTitle || nextTitle === currentTitle) return conversation;
+              return {
+                ...conversation,
+                title: nextTitle,
+                updatedAt: new Date(),
+              };
+            }),
+          );
+        });
+      }
+
       setIsLoading(true);
 
       const abort = new AbortController();
@@ -453,6 +604,7 @@ export function useChat(settings: AppSettings) {
       upsertConversation,
       buildApiMessages,
       updateMessage,
+      generateConversationTitle,
     ],
   );
 
