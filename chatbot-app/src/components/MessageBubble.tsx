@@ -1,8 +1,11 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import { User, Bot, AlertTriangle, Copy, Check } from 'lucide-react';
 import { useState, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import type { UIMessage } from '../types';
 import AgentProgress from './AgentProgress';
 import { getFileIcon, formatFileSize } from '../services/fileUtils';
@@ -11,17 +14,46 @@ interface MessageBubbleProps {
   message: UIMessage;
 }
 
-function CopyButton({ text }: { text: string }) {
+interface CopyButtonProps {
+  text: string;
+  label: string;
+  className: string;
+}
+
+function extractCodeText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(extractCodeText).join('');
+  }
+
+  if (node && typeof node === 'object' && 'props' in node) {
+    const props = (node as { props?: { children?: ReactNode } }).props;
+    return extractCodeText(props?.children ?? '');
+  }
+
+  return '';
+}
+
+function CopyButton({ text, label, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    window.setTimeout(() => setCopied(false), 2000);
   }, [text]);
 
   return (
-    <button className="copy-btn" onClick={copy} title="Copy code" aria-label="Copy code">
+    <button
+      className={`${className}${copied ? ' copied' : ''}`}
+      onClick={copy}
+      title={label}
+      aria-label={label}
+      type="button"
+    >
       {copied ? <Check size={13} /> : <Copy size={13} />}
     </button>
   );
@@ -46,9 +78,15 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         <div className="message-meta">
           <span className="message-author">{isUser ? 'You' : 'Nexus'}</span>
           <span className="message-time">{formattedTime}</span>
+          {message.content && (
+            <CopyButton
+              text={message.content}
+              label="Copy message"
+              className="message-copy-btn"
+            />
+          )}
         </div>
 
-        {/* File attachments */}
         {message.attachments && message.attachments.length > 0 && (
           <div className="message-attachments">
             {message.attachments.map((file) => (
@@ -68,12 +106,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Agent steps */}
         {isAssistant && message.agentSteps && message.agentSteps.length > 0 && (
           <AgentProgress steps={message.agentSteps} />
         )}
 
-        {/* Error state */}
         {message.error && (
           <div className="message-error">
             <AlertTriangle size={14} />
@@ -81,50 +117,37 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Message content */}
         {message.content ? (
           <div className={`message-content ${isUser ? 'user-content' : 'assistant-content'}`}>
-            {isAssistant ? (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={{
-                  // Code blocks with copy button
-                  pre: ({ children, ...props }) => {
-                    const codeEl = Array.isArray(children) ? children[0] : children;
-                    const codeText =
-                      typeof codeEl === 'object' &&
-                      codeEl !== null &&
-                      'props' in codeEl
-                        ? String((codeEl as { props: { children?: unknown } }).props.children ?? '')
-                        : '';
-                    return (
-                      <div className="code-block-wrapper">
-                        <pre {...props}>{children}</pre>
-                        {codeText && <CopyButton text={codeText.trim()} />}
-                      </div>
-                    );
-                  },
-                  // Open links in new tab
-                  a: ({ href, children, ...props }) => (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      {...props}
-                    >
-                      {children}
-                    </a>
-                  ),
-                }}
-              >
-                {message.content}
-              </ReactMarkdown>
-            ) : (
-              <p className="user-text">{message.content}</p>
-            )}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex, rehypeHighlight]}
+              components={{
+                pre: ({ children, ...props }) => {
+                  const codeText = extractCodeText(children).replace(/\n$/, '');
+                  return (
+                    <div className="code-block-wrapper">
+                      <pre {...props}>{children}</pre>
+                      {codeText && (
+                        <CopyButton
+                          text={codeText}
+                          label="Copy code"
+                          className="copy-btn"
+                        />
+                      )}
+                    </div>
+                  );
+                },
+                a: ({ href, children, ...props }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
 
-            {/* Streaming cursor */}
             {message.isStreaming && <span className="stream-cursor" aria-hidden="true" />}
           </div>
         ) : message.isStreaming ? (

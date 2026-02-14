@@ -8,6 +8,7 @@ import type { Conversation, AttachedFile, AppSettings } from '../types';
 import MessageBubble from './MessageBubble';
 import InputBar from './InputBar';
 import ModelSelector from './ModelSelector';
+import RenderedTitle from './RenderedTitle';
 
 gsap.registerPlugin(ScrollTrigger, GSAPSplitText, useGSAP);
 
@@ -388,7 +389,7 @@ export default function ChatInterface({
           )}
           <div className="chat-title-area">
             {conversation ? (
-              <h1 className="chat-title">{conversation.title}</h1>
+              <RenderedTitle title={conversation.title} className="chat-title" />
             ) : (
               <div className="chat-title-logo">
                 <div className="logo-mark-small" aria-hidden="true" />
