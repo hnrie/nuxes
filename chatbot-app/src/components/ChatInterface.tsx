@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Bot, Sparkles } from 'lucide-react';
+import { Bot, Sparkles, PanelLeft } from 'lucide-react';
 import type { Conversation, AttachedFile, AppSettings } from '../types';
 import MessageBubble from './MessageBubble';
 import InputBar from './InputBar';
@@ -13,6 +13,8 @@ interface ChatInterfaceProps {
   onStop: () => void;
   onModelChange: (modelId: string) => void;
   onToggleWebSearch: () => void;
+  mobileMode: boolean;
+  onToggleDrawer: () => void;
 }
 
 const SUGGESTED_PROMPTS = [
@@ -30,6 +32,8 @@ export default function ChatInterface({
   onStop,
   onModelChange,
   onToggleWebSearch,
+  mobileMode,
+  onToggleDrawer,
 }: ChatInterfaceProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -60,6 +64,11 @@ export default function ChatInterface({
       {/* Top bar */}
       <div className="chat-topbar">
         <div className="chat-topbar-left">
+          {mobileMode && (
+            <button className="topbar-menu-btn" onClick={onToggleDrawer} aria-label="Toggle sidebar">
+              <PanelLeft size={18} />
+            </button>
+          )}
           <div className="chat-title-area">
             {conversation ? (
               <h1 className="chat-title">{conversation.title}</h1>
