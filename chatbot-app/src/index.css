@@ -608,22 +608,30 @@ input, select, textarea { font-family: inherit; }
   filter: drop-shadow(0 0 6px var(--cyan));
 }
 
-.welcome-title {
+.welcome-greeting-block {
+  width: min(92vw, 620px);
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  perspective: 900px;
+}
+
+.welcome-greeting-text {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: clamp(26px, 3vw, 36px);
   font-weight: 800;
   letter-spacing: -0.03em;
+  line-height: 1.2;
+  text-align: center;
+  text-wrap: balance;
   background: linear-gradient(135deg, var(--text-primary), var(--accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-}
-
-.welcome-subtitle {
-  font-size: 15px;
-  color: var(--text-secondary);
-  max-width: 460px;
-  line-height: 1.6;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
 }
 
 .welcome-prompts {
@@ -1406,11 +1414,11 @@ input, select, textarea { font-family: inherit; }
     padding: 20px 12px;
     gap: 22px;
   }
-  .welcome-title {
-    font-size: 24px;
+  .welcome-greeting-block {
+    min-height: 58px;
   }
-  .welcome-subtitle {
-    font-size: 14px;
+  .welcome-greeting-text {
+    font-size: clamp(22px, 8vw, 30px);
   }
   .welcome-prompts { grid-template-columns: 1fr; gap: 8px; }
   .prompt-chip {
