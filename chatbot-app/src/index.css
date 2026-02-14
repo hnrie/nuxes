@@ -626,12 +626,18 @@ input, select, textarea { font-family: inherit; }
   line-height: 1.2;
   text-align: center;
   text-wrap: balance;
-  background: linear-gradient(135deg, var(--text-primary), var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
   transform-style: preserve-3d;
   will-change: transform, opacity;
+}
+
+@supports ((-webkit-background-clip: text) and (-webkit-text-fill-color: transparent)) or (background-clip: text) {
+  .welcome-greeting-text {
+    background: linear-gradient(135deg, var(--text-primary), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
 }
 
 .welcome-prompts {
