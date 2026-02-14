@@ -66,23 +66,115 @@ export async function chatCompletionStream(
   let buffer = '';
   let finishReason: string | null = null;
 
-  // Accumulate tool call arguments across chunks
   const pendingToolCalls: Record<
     number,
     { id: string; type: string; function: { name: string; arguments: string } }
   > = {};
-  let emittedToolCalls = false;
+  const completedToolCallIndexes = new Set<number>();
 
-  const emitToolCalls = () => {
-    if (emittedToolCalls || Object.keys(pendingToolCalls).length === 0) return;
-    emittedToolCalls = true;
-    const toolCallArray = Object.values(pendingToolCalls).map((tc) => ({
-      index: 0,
-      id: tc.id,
-      type: tc.type,
-      function: tc.function,
-    }));
+  const hasCompleteJsonPayload = (rawArguments: string) => {
+    let trimmedStart = 0;
+    while (trimmedStart < rawArguments.length && /\s/.test(rawArguments[trimmedStart])) {
+      trimmedStart += 1;
+    }
+    if (trimmedStart >= rawArguments.length) return false;
+
+    const firstChar = rawArguments[trimmedStart];
+    if (firstChar !== '{' && firstChar !== '[') return false;
+
+    let braceBalance = 0;
+    let bracketBalance = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = trimmedStart; i < rawArguments.length; i += 1) {
+      const char = rawArguments[i];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === '{') braceBalance += 1;
+      if (char === '}') braceBalance -= 1;
+      if (char === '[') bracketBalance += 1;
+      if (char === ']') bracketBalance -= 1;
+
+      if (braceBalance < 0 || bracketBalance < 0) return false;
+    }
+
+    if (inString || braceBalance !== 0 || bracketBalance !== 0) return false;
+
+    try {
+      JSON.parse(rawArguments.slice(trimmedStart));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const getCompletedToolCalls = () => {
+    const completed: NonNullable<ChatCompletionChunk['choices'][0]['delta']['tool_calls']> = [];
+    const sortedIndexes = Object.keys(pendingToolCalls)
+      .map((index) => Number(index))
+      .sort((a, b) => a - b);
+
+    for (const idx of sortedIndexes) {
+      if (completedToolCallIndexes.has(idx)) continue;
+      const toolCall = pendingToolCalls[idx];
+      if (!toolCall?.function.arguments) continue;
+      if (!hasCompleteJsonPayload(toolCall.function.arguments)) continue;
+
+      completedToolCallIndexes.add(idx);
+      completed.push({
+        index: idx,
+        id: toolCall.id,
+        type: toolCall.type,
+        function: {
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        },
+      });
+      delete pendingToolCalls[idx];
+    }
+
+    return completed;
+  };
+
+  const emitPendingToolCalls = () => {
+    const pendingIndexes = Object.keys(pendingToolCalls)
+      .map((index) => Number(index))
+      .sort((a, b) => a - b);
+
+    if (pendingIndexes.length === 0) return false;
+
+    const toolCallArray: NonNullable<ChatCompletionChunk['choices'][0]['delta']['tool_calls']> =
+      pendingIndexes.map((idx) => {
+        const toolCall = pendingToolCalls[idx];
+        return {
+          index: idx,
+          id: toolCall.id,
+          type: toolCall.type,
+          function: {
+            name: toolCall.function.name,
+            arguments: toolCall.function.arguments,
+          },
+        };
+      });
+
     onToolCalls(toolCallArray);
+    return true;
   };
 
   while (true) {
@@ -106,19 +198,19 @@ export async function chatCompletionStream(
         if (choice.finish_reason) {
           finishReason = choice.finish_reason;
           if (choice.finish_reason === 'tool_calls') {
-            emitToolCalls();
+            if (emitPendingToolCalls()) {
+              await reader.cancel();
+            }
             return { finishReason };
           }
         }
 
         const delta = choice.delta;
 
-        // Accumulate text content
         if (delta.content) {
           onChunk(delta.content);
         }
 
-        // Accumulate tool calls
         if (delta.tool_calls) {
           for (const tc of delta.tool_calls) {
             const idx = tc.index;
@@ -135,15 +227,20 @@ export async function chatCompletionStream(
               pendingToolCalls[idx].function.arguments += tc.function.arguments;
             }
           }
+
+          const completedToolCalls = getCompletedToolCalls();
+          if (completedToolCalls.length > 0) {
+            onToolCalls(completedToolCalls);
+            await reader.cancel();
+            return { finishReason };
+          }
         }
       } catch {
-        // Skip malformed chunks
       }
     }
   }
 
-  // If we have completed tool calls, pass them back
-  emitToolCalls();
+  emitPendingToolCalls();
 
   return { finishReason };
 }
