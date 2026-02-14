@@ -120,6 +120,8 @@ function saveChatState(state: HydratedChatState) {
 type FallbackToolParseResult = {
   toolCalls: ToolCall[];
   displayContent: string;
+  needsClarification: boolean;
+  clarificationPrompt?: string;
 };
 
 function normalizeToolName(rawName: string): string | null {
@@ -130,7 +132,20 @@ function normalizeToolName(rawName: string): string | null {
   return null;
 }
 
-function parseFallbackToolCalls(content: string): FallbackToolParseResult {
+export function detectToolIntentOnly(content: string): boolean {
+  const normalized = content.toLowerCase();
+  return [
+    /\blet me search\b/,
+    /\bi will search\b/,
+    /\bi'll search\b/,
+    /\bi will look up\b/,
+    /\bi'll look up\b/,
+    /\bi can search\b/,
+    /\bsearching for\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+export function parseFallbackToolCalls(content: string): FallbackToolParseResult {
   const toolCalls: ToolCall[] = [];
   const interpretedNames: string[] = [];
   const blocksToStrip: Array<{ start: number; end: number }> = [];
@@ -209,14 +224,60 @@ function parseFallbackToolCalls(content: string): FallbackToolParseResult {
   if (uniqueNames.length > 0) {
     const interpretedText = `Interpreted tool request: ${uniqueNames.join(', ')}`;
     displayContent = cleanText.length > 0 ? `${cleanText}\n\n${interpretedText}` : interpretedText;
-  } else {
-    displayContent = content;
+    return {
+      toolCalls,
+      displayContent,
+      needsClarification: false,
+    };
+  }
+
+  if (detectToolIntentOnly(content)) {
+    const queryMatch = content.match(/(?:search|look up)(?:\s+for)?\s+(.+?)(?:[.!?]|$)/i);
+    const query = queryMatch?.[1]?.trim();
+    if (query && query.length > 3 && !/\b(something|it|that|this)\b/i.test(query)) {
+      return {
+        toolCalls: [
+          {
+            id: generateId(),
+            type: 'function',
+            function: {
+              name: 'web_search',
+              arguments: JSON.stringify({ query }),
+            },
+          },
+        ],
+        displayContent: content,
+        needsClarification: false,
+      };
+    }
+
+    return {
+      toolCalls: [],
+      displayContent: content,
+      needsClarification: true,
+      clarificationPrompt: 'I can run web_search, but I need a specific query. What should I search for?',
+    };
   }
 
   return {
     toolCalls,
-    displayContent,
+    displayContent: content,
+    needsClarification: false,
   };
+}
+
+
+export function shouldAttemptArgumentRepair(toolMessages: ChatMessage[], retryCount: number, maxRetries: number): boolean {
+  if (retryCount >= maxRetries) return false;
+  return toolMessages.some((message) => {
+    try {
+      if (typeof message.content !== 'string') return false;
+      const parsed = JSON.parse(message.content) as { errorCode?: string };
+      return parsed.errorCode === 'invalid_arguments';
+    } catch {
+      return false;
+    }
+  });
 }
 
 // ─── Tool Execution ──────────────────────────────────────────────────────────
@@ -444,15 +505,84 @@ export function useChat(settings: AppSettings) {
         let streamContent = '';
         const agentSteps: AgentStep[] = [];
         let iterationCount = 0;
+        let continuationRepairAttempts = 0;
+        let argumentRepairAttempts = 0;
         const currentMessages = [...apiMessages];
+        const maxContinuationRepairs = 2;
+        const maxArgumentRepairs = 2;
 
-        // Agentic loop
+        const updateStreamingMessage = () => {
+          updateMessage(updatedConv.id, assistantMsgId, {
+            content: streamContent,
+            agentSteps: [...agentSteps],
+            isStreaming: true,
+          });
+        };
+
         while (iterationCount < MAX_AGENT_ITERATIONS) {
-          iterationCount++;
-          let pendingToolCalls: ToolCall[] | null = null;
+          iterationCount += 1;
+          const seenToolCallIds = new Set<string>();
+          const toolQueue: ToolCall[] = [];
+          const recognizedToolCalls: ToolCall[] = [];
+          const toolResultMessages: ChatMessage[] = [];
+          let processingQueue: Promise<void> | null = null;
+
+          const toToolCalls = (tcs: NonNullable<ToolCall[]>) =>
+            tcs.map((tc) => ({
+              id: tc.id ?? generateId(),
+              type: 'function' as const,
+              function: {
+                name: tc.function?.name ?? '',
+                arguments: tc.function?.arguments ?? '{}',
+              },
+            }));
+
+          const enqueueToolCalls = (incomingCalls: ToolCall[] | null | undefined) => {
+            if (!incomingCalls || incomingCalls.length === 0) return;
+            for (const toolCall of incomingCalls) {
+              if (seenToolCallIds.has(toolCall.id)) continue;
+              seenToolCallIds.add(toolCall.id);
+              recognizedToolCalls.push(toolCall);
+              toolQueue.push(toolCall);
+            }
+            if (!processingQueue) {
+              processingQueue = (async () => {
+                while (toolQueue.length > 0) {
+                  const tc = toolQueue.shift();
+                  if (!tc) continue;
+                  const step: AgentStep = {
+                    id: generateId(),
+                    toolName: tc.function.name,
+                    toolCallId: tc.id,
+                    input: tc.function.arguments,
+                    status: 'running',
+                    startedAt: new Date(),
+                  };
+                  agentSteps.push(step);
+                  updateStreamingMessage();
+
+                  const execution = await executeSubagentCall(tc, { attachedFiles: attachments });
+                  const result = formatSubagentResponse(execution);
+
+                  step.output = result;
+                  step.status = execution.ok ? 'done' : 'error';
+                  step.completedAt = new Date(execution.metadata.endTime);
+                  step.retries = execution.metadata.retries;
+                  step.failures = execution.metadata.failures;
+                  updateStreamingMessage();
+
+                  toolResultMessages.push({
+                    role: 'tool',
+                    tool_call_id: tc.id,
+                    name: tc.function.name,
+                    content: result,
+                  });
+                }
+              })();
+            }
+          };
 
           if (settings.streamingEnabled) {
-            // Stream mode
             await chatCompletionStream(
               {
                 model: settings.selectedModel,
@@ -464,28 +594,19 @@ export function useChat(settings: AppSettings) {
               },
               (chunk) => {
                 streamContent += chunk;
-                updateMessage(updatedConv.id, assistantMsgId, {
-                  content: streamContent,
-                  agentSteps: [...agentSteps],
-                  isStreaming: true,
-                });
+                updateStreamingMessage();
               },
               (tcs) => {
-                if (tcs && tcs.length > 0) {
-                  pendingToolCalls = tcs.map((tc) => ({
-                    id: tc.id ?? generateId(),
-                    type: 'function' as const,
-                    function: {
-                      name: tc.function?.name ?? '',
-                      arguments: tc.function?.arguments ?? '{}',
-                    },
-                  }));
-                }
+                if (!tcs || tcs.length === 0) return;
+                enqueueToolCalls(toToolCalls(tcs as unknown as ToolCall[]));
+              },
+              (tcs) => {
+                if (!tcs || tcs.length === 0) return;
+                enqueueToolCalls(toToolCalls(tcs as unknown as ToolCall[]));
               },
               abort.signal,
             );
           } else {
-            // Non-streaming mode
             const res = await chatCompletion({
               model: settings.selectedModel,
               messages: currentMessages,
@@ -498,77 +619,63 @@ export function useChat(settings: AppSettings) {
             if (choice?.message?.content) {
               streamContent = choice.message.content;
             }
-            if (choice?.message?.tool_calls) {
-              pendingToolCalls = choice.message.tool_calls;
-            }
+            enqueueToolCalls(choice?.message?.tool_calls ?? []);
           }
 
-          if ((!pendingToolCalls || pendingToolCalls.length === 0) && streamContent) {
+          if (processingQueue) {
+            await processingQueue;
+          }
+
+          let pendingToolCalls = recognizedToolCalls;
+
+          if (pendingToolCalls.length === 0 && streamContent) {
             const fallback = parseFallbackToolCalls(streamContent);
             if (fallback.toolCalls.length > 0) {
               pendingToolCalls = fallback.toolCalls;
+              enqueueToolCalls(pendingToolCalls);
+              if (processingQueue) {
+                await processingQueue;
+              }
               streamContent = fallback.displayContent;
-              updateMessage(updatedConv.id, assistantMsgId, {
-                content: streamContent,
-                agentSteps: [...agentSteps],
-                isStreaming: true,
-              });
+              updateStreamingMessage();
+            } else if (fallback.needsClarification && fallback.clarificationPrompt) {
+              streamContent = fallback.clarificationPrompt;
+              break;
             }
           }
 
-          // If no tool calls, we're done
-          if (!pendingToolCalls || pendingToolCalls.length === 0) break;
+          if (pendingToolCalls.length === 0) {
+            if (useTools && detectToolIntentOnly(streamContent) && continuationRepairAttempts < maxContinuationRepairs) {
+              continuationRepairAttempts += 1;
+              currentMessages.push({ role: 'assistant', content: streamContent });
+              currentMessages.push({
+                role: 'user',
+                content: 'respond only with a valid tool call json/function call',
+              });
+              streamContent = '';
+              continue;
+            }
+            break;
+          }
 
-          // Add assistant's tool call message to history
           currentMessages.push({
             role: 'assistant',
             content: streamContent || null as unknown as string,
             tool_calls: pendingToolCalls,
           });
 
-          // Execute all tool calls
-          const toolResultMessages: ChatMessage[] = [];
+          currentMessages.push(...toolResultMessages);
 
-          for (const tc of pendingToolCalls) {
-            const step: AgentStep = {
-              id: generateId(),
-              toolName: tc.function.name,
-              toolCallId: tc.id,
-              input: tc.function.arguments,
-              status: 'running',
-              startedAt: new Date(),
-            };
-            agentSteps.push(step);
-            updateMessage(updatedConv.id, assistantMsgId, {
-              content: streamContent,
-              agentSteps: [...agentSteps],
-              isStreaming: true,
+          if (shouldAttemptArgumentRepair(toolResultMessages, argumentRepairAttempts, maxArgumentRepairs)) {
+            argumentRepairAttempts += 1;
+            currentMessages.push({
+              role: 'user',
+              content: 'your tool call arguments were invalid. respond only with a corrected tool call json/function call',
             });
-
-            const execution = await executeSubagentCall(tc, { attachedFiles: attachments });
-            const result = formatSubagentResponse(execution);
-
-            step.output = result;
-            step.status = execution.ok ? 'done' : 'error';
-            step.completedAt = new Date(execution.metadata.endTime);
-            step.retries = execution.metadata.retries;
-            step.failures = execution.metadata.failures;
-            updateMessage(updatedConv.id, assistantMsgId, {
-              content: streamContent,
-              agentSteps: [...agentSteps],
-              isStreaming: true,
-            });
-
-            toolResultMessages.push({
-              role: 'tool',
-              tool_call_id: tc.id,
-              name: tc.function.name,
-              content: result,
-            });
+            streamContent = '';
+            continue;
           }
 
-          currentMessages.push(...toolResultMessages);
-          // Reset stream content for next iteration
           streamContent = '';
         }
 

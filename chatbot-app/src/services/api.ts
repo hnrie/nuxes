@@ -33,6 +33,7 @@ export async function chatCompletionStream(
   options: RequestOptions,
   onChunk: (text: string) => void,
   onToolCalls: (toolCalls: ChatCompletionChunk['choices'][0]['delta']['tool_calls']) => void,
+  onToolCallReady: (toolCalls: ChatCompletionChunk['choices'][0]['delta']['tool_calls']) => void,
   signal?: AbortSignal,
 ): Promise<{ finishReason: string | null }> {
   const tools = getEnabledTools(options);
@@ -230,6 +231,7 @@ export async function chatCompletionStream(
 
           const completedToolCalls = getCompletedToolCalls();
           if (completedToolCalls.length > 0) {
+            onToolCallReady(completedToolCalls);
             onToolCalls(completedToolCalls);
             await reader.cancel();
             return { finishReason };
