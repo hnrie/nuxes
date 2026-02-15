@@ -4,7 +4,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import { User, Bot, AlertTriangle, Copy, Check } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import type { ReactNode } from 'react';
 import type { UIMessage } from '../types';
 import AgentProgress from './AgentProgress';
@@ -19,6 +19,9 @@ interface CopyButtonProps {
   label: string;
   className: string;
 }
+
+const markdownRemarkPlugins = [remarkGfm, remarkMath];
+const markdownRehypePlugins = [rehypeKatex, rehypeHighlight];
 
 function extractCodeText(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') {
@@ -58,6 +61,42 @@ function CopyButton({ text, label, className }: CopyButtonProps) {
     </button>
   );
 }
+
+const MarkdownContent = memo(function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  return (
+    <>
+      <ReactMarkdown
+        remarkPlugins={markdownRemarkPlugins}
+        rehypePlugins={markdownRehypePlugins}
+        components={{
+          pre: ({ children, ...props }) => {
+            const codeText = extractCodeText(children).replace(/\n$/, '');
+            return (
+              <div className="code-block-wrapper">
+                <pre {...props}>{children}</pre>
+                {codeText && (
+                  <CopyButton
+                    text={codeText}
+                    label="Copy code"
+                    className="copy-btn"
+                  />
+                )}
+              </div>
+            );
+          },
+          a: ({ href, children, ...props }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+      {isStreaming && <span className="stream-cursor" aria-hidden="true" />}
+    </>
+  );
+});
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user';
@@ -119,36 +158,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
 
         {message.content ? (
           <div className={`message-content ${isUser ? 'user-content' : 'assistant-content'}`}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex, rehypeHighlight]}
-              components={{
-                pre: ({ children, ...props }) => {
-                  const codeText = extractCodeText(children).replace(/\n$/, '');
-                  return (
-                    <div className="code-block-wrapper">
-                      <pre {...props}>{children}</pre>
-                      {codeText && (
-                        <CopyButton
-                          text={codeText}
-                          label="Copy code"
-                          className="copy-btn"
-                        />
-                      )}
-                    </div>
-                  );
-                },
-                a: ({ href, children, ...props }) => (
-                  <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-
-            {message.isStreaming && <span className="stream-cursor" aria-hidden="true" />}
+            <MarkdownContent content={message.content} isStreaming={message.isStreaming} />
           </div>
         ) : message.isStreaming ? (
           <div className="message-thinking">

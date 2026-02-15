@@ -1,29 +1,17 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-
 interface RenderedTitleProps {
   title: string;
   className?: string;
 }
 
+function cleantitle(title: string): string {
+  return title
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\$[^$]+\$/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export default function RenderedTitle({ title, className }: RenderedTitleProps) {
-  return (
-    <ReactMarkdown
-      className={`rendered-title ${className ?? ''}`.trim()}
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
-        p: ({ children }) => <span>{children}</span>,
-        a: ({ href, children, ...props }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-            {children}
-          </a>
-        ),
-      }}
-    >
-      {title}
-    </ReactMarkdown>
-  );
+  return <span className={`rendered-title ${className ?? ''}`.trim()}>{cleantitle(title)}</span>;
 }

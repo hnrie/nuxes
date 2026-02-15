@@ -1,4 +1,4 @@
-import { BASE_URL, API_KEY } from '../config/models';
+import { API_PROXY_PATH } from '../config/models';
 import { getAgentTools } from '../agents';
 import type {
   ChatMessage,
@@ -45,11 +45,10 @@ export async function chatCompletionStream(
     ...(tools.length > 0 ? { tools, tool_choice: 'auto' } : {}),
   };
 
-  const response = await fetch(`${BASE_URL}/chat/completions`, {
+  const response = await fetch(API_PROXY_PATH, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify(body),
     signal,
@@ -258,11 +257,10 @@ export async function chatCompletion(options: RequestOptions): Promise<ChatCompl
     ...(tools.length > 0 ? { tools, tool_choice: 'auto' } : {}),
   };
 
-  const response = await fetch(`${BASE_URL}/chat/completions`, {
+  const response = await fetch(API_PROXY_PATH, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify(body),
   });
