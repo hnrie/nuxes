@@ -87,8 +87,7 @@ export default function Sidebar({
                       <button className="conv-btn" onClick={() => onSelectConv(c.id)}>
                         <MessageSquare size={14} className="conv-icon" />
                         <RenderedTitle title={c.title} className="conv-title" />
-                        <span className="conv-count">{c.messages.length}</span>
-                      </button>
+                    </button>
                       <button
                         className="conv-delete"
                         onClick={(e) => { e.stopPropagation(); onDeleteConv(c.id); }}
@@ -172,7 +171,6 @@ export default function Sidebar({
                   <button className="conv-btn" onClick={() => onSelectConv(c.id)}>
                     <MessageSquare size={14} className="conv-icon" />
                     <RenderedTitle title={c.title} className="conv-title" />
-                    <span className="conv-count">{c.messages.length}</span>
                   </button>
                   <button
                     className="conv-delete"

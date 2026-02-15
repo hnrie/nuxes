@@ -1,7 +1,6 @@
 import type { ModelConfig } from '../types';
 
-export const BASE_URL = 'https://diwness.cloud/v1';
-export const API_KEY = 'dummy';
+export const API_PROXY_PATH = '/api/chat/completions';
 
 export const MODELS: ModelConfig[] = [
   {
@@ -60,6 +59,7 @@ Tool call policy:
 - Do not wrap tool call JSON in markdown code fences.
 - Do not add explanation text before or after a tool call.
 - Never emit partial JSON when a tool call is intended.
+- Never emit XML-style tags, pseudo-code tool syntax, or mixed natural-language + tool-call output.
 
 Argument formatting policy:
 - Use strict JSON syntax with double-quoted keys and strings.
@@ -75,6 +75,11 @@ Decision policy:
 - Answer normally when no tool is needed.
 - Emit a tool call when current data, external search, file analysis, or code execution is needed.
 - If information is already sufficient, provide the final answer without a tool call.
+
+Conversation title generation policy:
+- If asked to create a conversation title, only return a short title and nothing else.
+- Never answer the user question in a title-generation request.
+- Return one short plain-text line with no markdown, no LaTeX, and no punctuation-heavy formatting.
 
 Multi-agent model policy:
 - Spawned subagents must use either an explicit supported model id or inherit the active main-agent model.

@@ -20,6 +20,24 @@ function generateTitle(content: string): string {
   return content.length > 50 ? content.substring(0, 50) + '…' : content;
 }
 
+function sanitizeConversationTitle(rawTitle: string, fallbackTitle: string): string {
+  const singleLine = rawTitle
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[#$>*_~`\[\]()]/g, ' ')
+    .replace(/\$[^$]+\$/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const shortened = singleLine
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(' ')
+    .trim();
+
+  return shortened.length > 0 ? shortened : fallbackTitle;
+}
+
 const chatStateStorageKey = 'nuxes chat state v1';
 
 type PersistedAgentStep = Omit<AgentStep, 'startedAt' | 'completedAt'> & {
@@ -373,14 +391,14 @@ export function useChat(settings: AppSettings) {
           messages: [
             {
               role: 'system',
-              content: 'Create a very short chat title from the user message. Return title only, max 6 words.',
+              content: 'You only generate conversation titles. Do not answer the user message. Return exactly one short plain-text title with at most 6 words.',
             },
             { role: 'user', content: firstMessage },
           ],
           temperature: 0.2,
         });
         const title = response.choices[0]?.message?.content?.trim() ?? '';
-        return title.length > 0 ? title : fallbackTitle;
+        return sanitizeConversationTitle(title, fallbackTitle);
       } catch {
         return fallbackTitle;
       }
@@ -605,10 +623,13 @@ export function useChat(settings: AppSettings) {
           const enqueueToolCalls = (incomingCalls: ToolCall[] | null | undefined) => {
             if (!incomingCalls || incomingCalls.length === 0) return;
             for (const toolCall of incomingCalls) {
-              if (seenToolCallIds.has(toolCall.id)) continue;
-              seenToolCallIds.add(toolCall.id);
-              recognizedToolCalls.push(toolCall);
-              toolQueue.push(toolCall);
+              const normalizedId = toolCall.id && toolCall.id.length > 0
+                ? toolCall.id
+                : `${toolCall.function.name}:${toolCall.function.arguments}`;
+              if (seenToolCallIds.has(normalizedId)) continue;
+              seenToolCallIds.add(normalizedId);
+              recognizedToolCalls.push({ ...toolCall, id: normalizedId });
+              toolQueue.push({ ...toolCall, id: normalizedId });
             }
             if (!processingQueue) {
               processingQueue = (async () => {
@@ -725,7 +746,7 @@ export function useChat(settings: AppSettings) {
 
           currentMessages.push({
             role: 'assistant',
-            content: streamContent || null as unknown as string,
+            content: streamContent,
             tool_calls: pendingToolCalls,
           });
 
